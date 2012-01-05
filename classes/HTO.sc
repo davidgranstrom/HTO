@@ -202,7 +202,7 @@ HTO {
                 fxchain[0][ch].set(\gate, 0); 
                 fxchain[0][ch]= nil;
             });
-            hpf[0]; // return the synth, not the whole array 
+            hpf[ch]; // return the synth, not the whole array 
         }
         { 'LPF' } {    
         
@@ -212,7 +212,7 @@ HTO {
                 fxchain[1][ch].set(\gate, 0); 
                 fxchain[1][ch]= nil;
             });
-            lpf[0]; 
+            lpf[ch]; 
         }
         { "fx does not exist".warn }
         ;
