@@ -74,8 +74,7 @@ h.ch[0..3].do{|c| c.insertFX.(\LPF) };"" // call again to release
 s.queryAllNodes;
 
 h.gui; // gui test
-
-HTOui(h, 'nanoKontrol'); // use a controller
+h.controller('nanoKontrol'); // use a controller
 
 h.free; 
 
