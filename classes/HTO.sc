@@ -450,6 +450,13 @@ HTO {
         ^guiExists;
     }
 
+    controller{|which|
+        if(uiExists.isNil, {
+            uiExists= HTOui(this, which);
+        });
+        ^uiExists;
+    }
+
     savePreset_ {|user|
         ^if(presets[user].isNil, {
             presets.put(user, (user: user));
@@ -472,8 +479,8 @@ HTO {
         isPlaying= false;
     }   
 
-    doesNotUnderstand {|selector ... args|  
-        var channels= channelStrip[selector];
+    doesNotUnderstand{|selector ... args|  
+        var channels = channelStrip[selector];
         ^channels ?? { super.doesNotUnderstand(selector, args) };
     }
 }
