@@ -4,20 +4,27 @@ HTO {
     var <>speakers;
     var <>mixerChannels;
     var <>numAudioChannels;
+
     var <audiobus, <mixerbus, <masterbus;
 
     var server;
     var src, xfer, fx, channels, master;
-
-    var <>faderVal, <>knobVal, <>hi_btnVal, <>lo_btnVal;
-    var <>masterVal,<>mknobVal;
-    var fxchain, presets; 
+    var fxchain; 
 
     var srcsynth, masterFader;
     var allXfer, allFaders, channelStrip;
-    var <isPlaying, <srcReady; 
+    var curBuf;
 
-    var <curFile, lib;
+    var lib;
+
+    var <presets;
+    var <curFile;
+
+    var <>faderVal, <>knobVal, <>hi_btnVal, <>lo_btnVal;
+    var <>masterVal,<>mknobVal;
+
+    var <isPlaying, <srcReady; 
+    var <>cursorPos, cursorMove;
     var <>uiExists, <>guiExists;
 
     *new{|speakers=2, mixerChannels=9, numAudioChannels=8|
@@ -220,8 +227,9 @@ HTO {
 
     loadAudioFile{|filepath|
 
-        var numChannels;
-        var name;
+        var name, sf;
+        var numChannels, numFrames;  
+        var sampleRate, duration;
 
         if(filepath.notNil, { filepath= PathName(filepath) });
 
@@ -231,216 +239,155 @@ HTO {
             
             Dialog.getPaths({|path|  
 
-                fork{
-                    path.do{|pth|
+                path.do{|pth|
+                    name= PathName(pth).fileNameWithoutExtension.asSymbol;
+                    sf= SoundFile.openRead(pth);
 
-                        numChannels= SoundFile.openRead(pth).numChannels;
-                        name= PathName(pth).fileNameWithoutExtension.asSymbol;
+                    numChannels = sf.numChannels;
+                    numFrames   = sf.numFrames;
+                    sampleRate  = sf.sampleRate;
+                    duration    = numFrames/sampleRate;
+                    sf.close;
 
-                        if(lib[name].isNil, {
-                            lib.put(
-                                name,
-                                Buffer.cueSoundFile(
-                                        server, 
-                                        pth, 
-                                        0, 
-                                        numChannels, 
-                                        262144, 
-                                        {
-                                            inform(
-                                               "File" 
-                                               + name.asCompileString 
-                                               + "was successfully loaded."
-                                            ); 
-                                        }
-                                );
-                            );
-                        }, {
-                            inform("File" + name.asCompileString + "already exists in library!")
-                        });
-
-                    server.sync;
-                    curFile= name;
-                    this.prepareForPlay(name);
-                    };
-                }
+                    if(lib[name].isNil, {
+                        lib.put(name, [ pth, numChannels, numFrames, sampleRate, nil, duration ]);
+                        curFile= name;
+                        this.prepareForPlay(name, numChannels);
+                    }, {
+                        inform("File" + name.asCompileString + "already exists in library!");
+                    });
+                };
             });
         } 
         { filepath.isFile } {
 
-            fork{
-                filepath= [ filepath.fullPath ];
-                filepath.do{|pth|
+            filepath= [ filepath.fullPath ];
+            filepath.do{|pth|
+                name= PathName(pth).fileNameWithoutExtension.asSymbol;
+                sf= SoundFile.openRead(pth);
 
-                        numChannels= SoundFile.openRead(pth).numChannels;
-                        name= PathName(pth).fileNameWithoutExtension.asSymbol;
+                numChannels = sf.numChannels;
+                numFrames   = sf.numFrames;
+                sampleRate  = sf.sampleRate;
+                duration    = numFrames/sampleRate;
+                sf.close;
 
-                        if(lib[name].isNil, {
-                            lib.put(
-                                name,
-                                Buffer.cueSoundFile(
-                                        server, 
-                                        pth, 
-                                        0, 
-                                        numChannels, 
-                                        262144, 
-                                        {
-                                            inform(
-                                               "File" 
-                                               + name.asCompileString 
-                                               + "was successfully loaded."
-                                            ); 
-                                        }
-                                );
-                            );
-                        }, {
-                            inform("File" + name.asCompileString + "already exists in library!")
-                        });
-
-                server.sync;
-                curFile= name;
-                this.prepareForPlay(name);
-                };
+                if(lib[name].isNil, {
+                    lib.put(name, [ pth, numChannels, numFrames, sampleRate, nil, duration ]);
+                    curFile= name;
+                    this.prepareForPlay(name, numChannels);
+                }, {
+                    inform("File" + name.asCompileString + "already exists in library!");
+                });
             }
         }
         { filepath=='internal' } { // FIX ME
 
-            fork{
-                SoundFile.collect("~/path/to/HTO/Audio/*").do{|f| 
+            SoundFile.collect("/path/to/HTO/Audio/*").do{|f| 
 
-                        name= PathName(f.path).fileNameWithoutExtension.asSymbol;
+                name= PathName(f.path).fileNameWithoutExtension.asSymbol;
+                sf= SoundFile.openRead(f.path);
 
-                        if(lib[name].isNil, {
-                            lib.put(
-                                name,
-                                Buffer.cueSoundFile(
-                                        server, 
-                                        f.path, 
-                                        0, 
-                                        f.numChannels, 
-                                        262144, 
-                                        {
-                                            inform(
-                                               "File" 
-                                               + name.asCompileString 
-                                               + "was successfully loaded."
-                                            ); 
-                                        }
-                                );
-                            );
-                        }, {
-                            inform("File" + name.asCompileString + "already exists in library!")
-                        });
+                numChannels = sf.numChannels;
+                numFrames   = sf.numFrames;
+                sampleRate  = sf.sampleRate;
+                duration    = numFrames/sampleRate;
+                sf.close;
 
-                server.sync;
-                curFile= name;
-                this.prepareForPlay(name);
-                };
-            }
+                if(lib[name].isNil, {
+                    lib.put(name, [ f.path, numChannels, numFrames, sampleRate, nil, duration ]);
+                    curFile= name;
+                    fork{
+                        this.prepareForPlay(name, numChannels);
+                        srcReady.hang; // wait here for srcdef to build
+                    }
+                }, {
+                    inform("File" + name.asCompileString + "already exists in library!");
+                });
+            };
         }
         ;
     }
 
-    play{|file|
-
-        var name;
-
-        if(curFile.isNil, { "No audiofiles found!".throw });
+    play{|file, loop=1|
 
         if(isPlaying.not, {
-            name= 'HTO_src_' ++ curFile; 
-            if(file.notNil, {
-                fork{
-                    if(lib[file].isNil, {
-                        this.prepareForPlay(file);
-                        srcReady.hang;
-                    });
-                    name= 'HTO_src_' ++ file; 
-                    curFile= file;
-                    srcsynth= Synth.head(src, name.asSymbol);
-                }
-            }, { 
-                srcsynth= Synth.head(src, name.asSymbol);
-            });
-        });
-        isPlaying= true;
-    }
-
-    prepareForPlay{|file|
-
-        var srcdef, name; 
-        var buf, numChannels;
-        
-        file ?? { file= curFile };
-
-        srcdef= {|name, numChannels, buf|
-            SynthDef(name, {|gate=1, loop=1| 
-                var env= EnvGen.ar(Env([0,1,0], [0.01,0.01], \sine, 1), gate, doneAction:2);
-                var src= VDiskIn.ar(numChannels, buf, BufRateScale.kr(buf), loop: loop ); 
-                Out.ar(audiobus[0], src*env);
-            }).add;
-        };
-
-        if(file.isArray.not, {
-
+            file ?? { file= curFile ?? { "No audiofile(s) found!".throw } };
             fork{
 
-                buf= lib[file];
-                numChannels= buf.numChannels;
-                name= 'HTO_src_' ++ file;
+                var buf, startPos;    
+                var path        = lib[file][0];
+                var numChannels = lib[file][1];
+                var numFrames   = lib[file][2];
+                var sampleRate  = lib[file][3];
+                var name        = lib[file][4];
+                var update      = 0.03;
 
-                server.sync;
-                srcdef.(name.asSymbol, numChannels, buf);
-                server.sync;
+                startPos  = cursorPos ? 0;
+                numFrames = numFrames + 1;
 
                 allXfer.do{|syn, i| 
                     var in= i % numChannels; 
                     syn.set(\in, audiobus[in]);
                 };
-                srcReady.unhang;
-            }
-
-        }, {
-
-            // FIX ME
-            fork{
-
-                buf= lib.atAll(file);
-                numChannels= 1;
-
-                srcdef.(numChannels, buf);
+                buf= Buffer.cueSoundFile(server, path, startPos, numChannels); // bufferSize: 262144
                 server.sync;
-
-                allXfer.do{|syn, i| 
-                    var in= i % buf.size; 
-                    syn.set(\in, audiobus[in]);
+                srcsynth= Synth.head(src, name, [\buf, buf, \loop, loop]);
+                // advance the play head
+                cursorMove= 
+                fork{
+                    inf.do{|i| 
+                        defer{ 
+                            cursorPos= (startPos+((i*update)*sampleRate).asInteger)%numFrames 
+                        };  
+                    update.wait; 
+                    }
                 };
-                0.1.wait; 
-                // load multiple mono buffers
-                srcsynth= buf.collect{|b,i|
-                    Synth.head(src, \HTO_src, [
-
-                            \out, audiobus[i], 
-                            \buf, b, 
-                            \numChannels, numChannels,
-                            \gate, 1
-                          ]
-                    );
-                }
+                curBuf= buf;
+                curFile= file;
+                isPlaying= true;
             }
         });
     }
 
+    prepareForPlay{|name, numChannels|
+        fork{
+            var defname= 'HTO_src_' ++ name;
+            defname= defname.asSymbol;
+            SynthDef(defname, {|buf, gate=1, loop| 
+                    var env= EnvGen.ar(Env([0,1,0], [0.02,0.02], \sine, 1), gate, doneAction:2);
+                    var src= VDiskIn.ar(numChannels, buf, BufRateScale.kr(buf), loop: loop ); 
+                    Out.ar(audiobus[0], src*env);
+            }).add;
+            server.sync;
+            lib[name][4]= defname;
+            srcReady.unhang; 
+            inform("File" + name.asCompileString + "was successfully loaded."); 
+        }
+    }
+
+    // in absence of gui.. 
+    playFrom{|pos, file, loop|
+        if(isPlaying.not, {
+            cursorPos= (pos*60)*lib[file][3];
+            this.play(file, loop);
+        });
+    }
+
     stop{
-        if(srcsynth.notNil, { 
-            srcsynth.do{|syn| syn.set(\gate, 0) }; 
-            srcsynth= nil; 
+        if(isPlaying, { 
+            srcsynth.set(\gate, 0); srcsynth= nil; 
+            curBuf.close; curBuf.free; curBuf= nil;
+            cursorMove.stop; cursorMove= nil;
             isPlaying= false;
         });
     }
 
     library{
-        ^lib.keys.as(Array);
+        ^lib.collect(_.last)
+            .getPairs.collect{|x,i|
+                if(i.odd, { x.asTimeString }, { x })
+            }
     }
 
     gui{
@@ -472,12 +419,15 @@ HTO {
     }
 
     free{
-
         [ src, xfer, fx, channels, master ].do(_.free);
-        lib.do{|buf| buf.free };
-        uiExists ? uiExists.free;
+        curBuf   !? { curBuf.close; curBuf.free };
+        uiExists !? { uiExists.free };
         isPlaying= false;
     }   
+
+    debug{
+        ^lib;
+    }
 
     doesNotUnderstand{|selector ... args|  
         var channels = channelStrip[selector];
@@ -490,8 +440,6 @@ HTO {
 TODO: 
 =====
 
-    * pause, seek
-    * playback sometimes glitch? happens when stopped -> played
     * presets
     * add LFO's similar to insertFX from channelStrip?
         e.g. {{|x| this.insertLFO(x, param, i) }}

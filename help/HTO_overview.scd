@@ -26,11 +26,11 @@ h.stop;
 
 h.library; // show existing audio files 
 
-// if 'filename' is an absolute path, it will be added to the library 
-h.play('FILENAME'); 
-
-// access the library 
+// access the library
 h.play(h.library[0]);
+
+// start playback from another position in the buffer
+h.playFrom(0.5, h.library[0]); // pos in minutes
 
 /*=================================================================
  PATCHING
@@ -92,9 +92,10 @@ ch[num].lpf.set(\cfreq, \loVal, \hiVal);
 master.set(\amp, \mute);
 
 // INSTANCE METHODS
-loadAudioFile; // "/path/to/file" or nil. default: nil
-library        // show added audio files
-play;          // 'library Name' or "/path/to/file". default: nil
+loadAudioFile(); // "/path/to/file" or nil. default: nil
+library          // show added audio files
+play();          // 'library Name' or 'nil' which plays the latest added file. default: nil
+playFrom();      // play from another position in the buffer. playFrom(pos, file, loop)
 stop;
 free;
 
