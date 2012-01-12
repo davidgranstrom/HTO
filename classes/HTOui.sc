@@ -111,6 +111,6 @@ HTOui {
     }
 
     free{
-        curCtrl ? curCtrl.flat.do(_.remove);
+        curCtrl !? { curCtrl.flat.do(_.remove) };
     }
 }
