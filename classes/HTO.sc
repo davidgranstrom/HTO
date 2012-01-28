@@ -310,7 +310,6 @@ HTO {
     }
 
     play{|file, loop=1|
-
         if(isPlaying.not, {
             file ?? { file= curFile ?? { "No audiofile(s) found!".throw } };
             fork{
@@ -381,6 +380,11 @@ HTO {
             cursorMove.stop; cursorMove= nil;
             isPlaying= false;
         });
+    }
+
+    reset{
+        this.stop; 
+        cursorPos= nil;
     }
 
     library{
