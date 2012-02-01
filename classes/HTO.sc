@@ -227,84 +227,69 @@ HTO {
 
     loadAudioFile{|filepath|
 
-        var name, sf;
-        var numChannels, numFrames;  
-        var sampleRate, duration;
+        var ext, bname;
+        var bundle= [];
+        var metadata= {|path, bname|
 
-        if(filepath.notNil, { filepath= PathName(filepath) });
+            var meta;
+            var name        = path.fileNameWithoutExtension.asSymbol;
+            var check       = name.split($.);
+
+            var sf          = SoundFile.openRead(path.fullPath);
+            var numChannels = sf.numChannels;
+            var numFrames   = sf.numFrames;
+            var sampleRate  = sf.sampleRate;
+            var duration    = sf.duration;
+            sf.close;
+
+            meta= [ path.fullPath, numChannels, numFrames, sampleRate, nil, duration ];
+
+            if(numChannels>1, {
+                lib.put(name, meta);
+                curFile= name;
+                this.prepareForPlay(name, numChannels);
+            }, {
+                case
+                { check.last=="L"  } { lib.put(bname, bundle= bundle.add(meta)) }
+                { check.last=="C"  } { lib.put(bname, bundle= bundle.add(meta)) }
+                { check.last=="R"  } { lib.put(bname, bundle= bundle.add(meta)) }
+                { check.last=="Ls" } { lib.put(bname, bundle= bundle.add(meta)) }
+                { check.last=="Rs" } { lib.put(bname, bundle= bundle.add(meta)) }
+                { lib.put(name.asSymbol, meta) }
+                ;         
+            });
+        };
 
         case 
+        { filepath.isNil       } { Dialog.getPaths({|path| path.do{|pth| metadata.(pth) } }) } 
+        { filepath.isFile      } { metadata.(filepath) }
+        { filepath=='internal' } {
 
-        { filepath.isNil } {
-            
-            Dialog.getPaths({|path|  
-
-                path.do{|pth|
-                    name= PathName(pth).fileNameWithoutExtension.asSymbol;
-                    sf= SoundFile.openRead(pth);
-
-                    numChannels = sf.numChannels;
-                    numFrames   = sf.numFrames;
-                    sampleRate  = sf.sampleRate;
-                    duration    = numFrames/sampleRate;
-                    sf.close;
-
-                    if(lib[name].isNil, {
-                        lib.put(name, [ pth, numChannels, numFrames, sampleRate, nil, duration ]);
-                        curFile= name;
-                        this.prepareForPlay(name, numChannels);
-                    }, {
-                        inform("File" + name.asCompileString + "already exists in library!");
-                    });
-                };
-            });
-        } 
-        { filepath.isFile } {
-
-            filepath= [ filepath.fullPath ];
-            filepath.do{|pth|
-                name= PathName(pth).fileNameWithoutExtension.asSymbol;
-                sf= SoundFile.openRead(pth);
-
-                numChannels = sf.numChannels;
-                numFrames   = sf.numFrames;
-                sampleRate  = sf.sampleRate;
-                duration    = numFrames/sampleRate;
-                sf.close;
-
-                if(lib[name].isNil, {
-                    lib.put(name, [ pth, numChannels, numFrames, sampleRate, nil, duration ]);
-                    curFile= name;
-                    this.prepareForPlay(name, numChannels);
-                }, {
-                    inform("File" + name.asCompileString + "already exists in library!");
-                });
-            }
-        }
-        { filepath=='internal' } { // FIX ME
-
-            SoundFile.collect("/path/to/HTO/Audio/*").do{|f| 
-
-                name= PathName(f.path).fileNameWithoutExtension.asSymbol;
-                sf= SoundFile.openRead(f.path);
-
-                numChannels = sf.numChannels;
-                numFrames   = sf.numFrames;
-                sampleRate  = sf.sampleRate;
-                duration    = numFrames/sampleRate;
-                sf.close;
-
-                if(lib[name].isNil, {
-                    lib.put(name, [ f.path, numChannels, numFrames, sampleRate, nil, duration ]);
-                    curFile= name;
-                    fork{
-                        this.prepareForPlay(name, numChannels);
-                        srcReady.hang; // wait here for srcdef to build
+        PathName("~/Documents/projects/github/HTO/Audio/")
+            .entries.do{|file|
+                if(file.isFolder, {
+                    file.entries.do{|f| 
+                        ext= f.extension;
+                        bname= file.folderName.asSymbol;
+                        case
+                        { ext=="aif" or:{ext=="aiff"}} { metadata.(f, bname) }
+                        { ext=="wav" or:{ext=="wave"}} { metadata.(f, bname) }
+                        ;
+                        // add synth bundle
+                        lib[bname].do{|name|
+                            this.prepareForPlay(name, 1);
+                            srcReady.hang; // wait here for srcdef to build
+                        };
+                        curFile= bname;
                     }
-                }, {
-                    inform("File" + name.asCompileString + "already exists in library!");
-                });
-            };
+                }, { 
+                    ext= file.extension;
+                    case
+                    { ext=="aif" or:{ext=="aiff"}} { metadata.(file) }
+                    { ext=="wav" or:{ext=="wave"}} { metadata.(file) }
+                    ;
+                })
+            }
         }
         ;
     }
@@ -349,7 +334,7 @@ HTO {
         });
     }
 
-    prepareForPlay{|name, numChannels|
+    prepareForPlay{|name, numChannels, bundle=false|
         fork{
             var defname= 'HTO_src_' ++ name;
             defname= defname.asSymbol;
@@ -359,7 +344,11 @@ HTO {
                     Out.ar(audiobus[0], src*env);
             }).add;
             server.sync;
-            lib[name][4]= defname;
+            if(bundle.not, { 
+                lib[name][4]= defname
+            }, {
+                lib[name][4]= name
+            });
             srcReady.unhang; 
             inform("File" + name.asCompileString + "was successfully loaded."); 
         }
