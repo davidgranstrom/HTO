@@ -59,6 +59,9 @@ HTO {
         allXfer          = Array.newClear(mixerChannels);
         allFaders        = Array.newClear(mixerChannels); 
 
+        // play function
+        srcsynth         = Array.new;
+        curBuf           = Array.new;
         isPlaying        = false;
         srcReady         = Condition.new;
 
@@ -227,12 +230,12 @@ HTO {
 
     loadAudioFile{|filepath|
 
-        var ext, bname;
+        var ext, sname, bname;
         var bundle= [];
         var metadata= {|path, bname|
 
             var meta;
-            var name        = path.fileNameWithoutExtension.asSymbol;
+            var name        = path.fileNameWithoutExtension;
             var check       = name.split($.);
 
             var sf          = SoundFile.openRead(path.fullPath);
@@ -240,14 +243,16 @@ HTO {
             var numFrames   = sf.numFrames;
             var sampleRate  = sf.sampleRate;
             var duration    = sf.duration;
-            sf.close;
 
-            meta= [ path.fullPath, numChannels, numFrames, sampleRate, nil, duration ];
+            sf.close;
+            name= name.asSymbol;
+
+            meta= [ path.fullPath, numChannels, numFrames, sampleRate, nil, nil, duration ];
 
             if(numChannels>1, {
-                lib.put(name, meta);
-                curFile= name;
-                this.prepareForPlay(name, numChannels);
+                lib.put(name, [ meta ]);
+                curFile= name;            
+                this.prepareForPlay(name, numChannels, false, 0);
             }, {
                 case
                 { check.last=="L"  } { lib.put(bname, bundle= bundle.add(meta)) }
@@ -255,32 +260,32 @@ HTO {
                 { check.last=="R"  } { lib.put(bname, bundle= bundle.add(meta)) }
                 { check.last=="Ls" } { lib.put(bname, bundle= bundle.add(meta)) }
                 { check.last=="Rs" } { lib.put(bname, bundle= bundle.add(meta)) }
-                { lib.put(name.asSymbol, meta) }
+                { lib.put(name, [ meta ]) }
                 ;         
             });
         };
 
         case 
         { filepath.isNil       } { Dialog.getPaths({|path| path.do{|pth| metadata.(pth) } }) } 
-        { filepath.isFile      } { metadata.(filepath) }
+        // { filepath.isFile      } { metadata.(PathName(filepath)) }
         { filepath=='internal' } {
 
-        PathName("~/Documents/projects/github/HTO/Audio/")
+        PathName("~/Documents/projects/github/HTO/Audio/") // resolve relative?
             .entries.do{|file|
                 if(file.isFolder, {
-                    file.entries.do{|f| 
-                        ext= f.extension;
-                        bname= file.folderName.asSymbol;
+                    file.entries.do{|f,i| 
+                        sname = f.fileNameWithoutExtension.asSymbol;
+                        bname = file.folderName.asSymbol;
+                        ext   = f.extension;
                         case
                         { ext=="aif" or:{ext=="aiff"}} { metadata.(f, bname) }
                         { ext=="wav" or:{ext=="wave"}} { metadata.(f, bname) }
                         ;
                         // add synth bundle
-                        lib[bname].do{|name|
-                            this.prepareForPlay(name, 1);
-                            srcReady.hang; // wait here for srcdef to build
-                        };
-                        curFile= bname;
+                        // this.prepareForPlay(sname, 1, true, i);
+                        // srcReady.hang; // wait here for srcdef to build
+                        // curFile= bname;
+                        // metadata.postln;
                     }
                 }, { 
                     ext= file.extension;
@@ -294,64 +299,104 @@ HTO {
         ;
     }
 
+    prepareForPlay{|name, numChannels, bundle, i|
+        fork{
+            var defname= 'HTO_src_' ++ name;
+            defname= defname.asSymbol;
+            if(bundle.not, { 
+                lib[name][0][4]= defname;
+                lib[name][0][5]= bundle; 
+            }, {
+                lib[name][i][4]= defname;
+                lib[name][i][5]= bundle; // show this sdef belongs to a bundle 
+            });
+            SynthDef(defname, {|buf, gate=1, loop| 
+                    var env= EnvGen.ar(Env([0,1,0], [0.02,0.02], \sine, 1), gate, doneAction:2);
+                    var src= VDiskIn.ar(numChannels, buf, BufRateScale.kr(buf), loop: loop ); 
+                    Out.ar(audiobus[i], src*env);
+            }).add;
+            server.sync;
+            srcReady.unhang; 
+            inform("File" + name.asCompileString + "was successfully loaded."); 
+        }
+    }
+
     play{|file, loop=1|
+
+        var buf, startPos, cursor;
+        var isBundle;
+        var update= 0.03;
+
+        var path;
+        var numChannels;
+        var numFrames;
+        var sampleRate;
+        var name;
+
         if(isPlaying.not, {
+
             file ?? { file= curFile ?? { "No audiofile(s) found!".throw } };
-            fork{
+            isBundle= lib[file][0][5];
 
-                var buf, startPos;    
-                var path        = lib[file][0];
-                var numChannels = lib[file][1];
-                var numFrames   = lib[file][2];
-                var sampleRate  = lib[file][3];
-                var name        = lib[file][4];
-                var update      = 0.03;
-
-                startPos  = cursorPos ? 0;
-                numFrames = numFrames + 1;
-
-                allXfer.do{|syn, i| 
-                    var in= i % numChannels; 
-                    syn.set(\in, audiobus[in]);
-                };
-                buf= Buffer.cueSoundFile(server, path, startPos, numChannels); // bufferSize: 262144
-                server.sync;
-                srcsynth= Synth.head(src, name, [\buf, buf, \loop, loop]);
-                // advance the play head
+            cursor= {|sR, nF|
                 cursorMove= 
                 fork{
                     inf.do{|i| 
                         defer{ 
-                            cursorPos= (startPos+((i*update)*sampleRate).asInteger)%numFrames 
+                            cursorPos= (startPos+((i*update)*sR).asInteger)%nF 
                         };  
                     update.wait; 
                     }
+                }
+            };
+            server.bind{
+                if(isBundle.not, {
+                    // interleaved
+                    path        = lib[file][0][0];
+                    numChannels = lib[file][0][1];
+                    numFrames   = lib[file][0][2];
+                    sampleRate  = lib[file][0][3];
+                    name        = lib[file][0][4];
+
+                    startPos  = cursorPos ? 0;
+                    numFrames = numFrames + 1;
+
+                    buf= Buffer.cueSoundFile(server, path, startPos, numChannels); // bufferSize: 262144
+                    curBuf= curBuf.add(buf);
+                    server.sync;
+                    srcsynth= srcsynth.add(Synth.newPaused(name, [\buf, buf, \loop, loop], src));
+                    server.sync;
+                    cursor.(sampleRate, numFrames);
+                }, {
+                    // mono
+                    lib[file].do{|f|
+                        path        = f[0];
+                        name        = f[4];
+                        startPos  = cursorPos ? 0;
+
+                        buf= Buffer.cueSoundFile(server, path, startPos, 1); 
+                        curBuf= curBuf.add(buf);
+                        server.sync;
+                        srcsynth= srcsynth.add(Synth.newPaused(name, [\buf, buf, \loop, loop], src));
+                        server.sync;
+                    };
+                    // use biggest value of sR/nF to make sure cursor doesn't loop to early 
+                    sampleRate  = lib[file].collect(_.at(3)).sort.last;
+                    numFrames   = lib[file].collect(_.at(2)).sort.last;
+                    numChannels = lib[file].size;
+                    numFrames = numFrames + 1;
+                    cursor.(sampleRate, numFrames);
+                });
+                allXfer.do{|syn, i| 
+                    var in= i % numChannels; 
+                    syn.set(\in, audiobus[in]);
                 };
-                curBuf= buf;
+                // srcsynth.do{|syn| syn.run };
+                srcsynth.do(_.run);
                 curFile= file;
                 isPlaying= true;
-            }
+            };
         });
-    }
-
-    prepareForPlay{|name, numChannels, bundle=false|
-        fork{
-            var defname= 'HTO_src_' ++ name;
-            defname= defname.asSymbol;
-            SynthDef(defname, {|buf, gate=1, loop| 
-                    var env= EnvGen.ar(Env([0,1,0], [0.02,0.02], \sine, 1), gate, doneAction:2);
-                    var src= VDiskIn.ar(numChannels, buf, BufRateScale.kr(buf), loop: loop ); 
-                    Out.ar(audiobus[0], src*env);
-            }).add;
-            server.sync;
-            if(bundle.not, { 
-                lib[name][4]= defname
-            }, {
-                lib[name][4]= name
-            });
-            srcReady.unhang; 
-            inform("File" + name.asCompileString + "was successfully loaded."); 
-        }
     }
 
     // in absence of gui.. 
@@ -364,8 +409,10 @@ HTO {
 
     stop{
         if(isPlaying, { 
-            srcsynth.set(\gate, 0); srcsynth= nil; 
-            curBuf.close; curBuf.free; curBuf= nil;
+            // srcsynth.set(\gate, 0); srcsynth= nil; 
+            // curBuf.close; curBuf.free; curBuf= nil;
+            srcsynth.do(_.set(\gate, 0)); srcsynth= []; 
+            curBuf.do(_.close.free); curBuf= [];
             cursorMove.stop; cursorMove= nil;
             isPlaying= false;
         });
@@ -377,7 +424,8 @@ HTO {
     }
 
     library{
-        ^lib.collect(_.last)
+        ^lib.collect(_.flat)
+            .collect(_.last)
             .getPairs.collect{|x,i|
                 if(i.odd, { x.asTimeString }, { x })
             }
@@ -413,7 +461,7 @@ HTO {
 
     free{
         [ src, xfer, fx, channels, master ].do(_.free);
-        curBuf   !? { curBuf.close; curBuf.free };
+        curBuf   !? { curBuf.do(_.close.free) };
         uiExists !? { uiExists.free };
         isPlaying= false;
     }   
