@@ -231,11 +231,10 @@ HTO {
     loadAudioFile{|filepath|
 
         var ext, check;
-        var bundlename, bundle, md;
+        var bundlename, bundle;
 
         var metadata= {|path|
             var meta, name; 
-            // var path        = PathName(pth);
             var sf          = SoundFile.openRead(path.fullPath);
             var numChannels = sf.numChannels;
             var numFrames   = sf.numFrames;
@@ -257,45 +256,37 @@ HTO {
         var makeBundle= {|bundlename, bundle, meta, chk, i|
             var defname = chk;
             var check   = chk.split($.);
-            bundlename= bundlename.asSymbol;
-            fork{
-                case 
-                { check.last=="L"  } 
-                { 
-                    lib.put(bundlename, bundle[0]= meta); 
-                    this.prepareForPlay(defname, 1, bundlename, 0);
-                    // srcReady.hang; 
-                }
-                { check.last=="R"  } 
-                { 
-                    lib.put(bundlename, bundle[1]= meta); 
-                    this.prepareForPlay(defname, 1, bundlename, 1);
-                    // srcReady.hang; 
-                }
-                { check.last=="Ls" } 
-                { 
-                    lib.put(bundlename, bundle[2]= meta); 
-                    this.prepareForPlay(defname, 1, bundlename, 2);
-                    // srcReady.hang; 
-                }
-                { check.last=="Rs" } 
-                { 
-                    lib.put(bundlename, bundle[3]= meta); 
-                    this.prepareForPlay(defname, 1, bundlename, 3);
-                    // srcReady.hang; 
-                }
-                { check.last=="C"  } 
-                { 
-                    lib.put(bundlename, bundle[4]= meta); 
-                    this.prepareForPlay(defname, 1, bundlename, 4);
-                    // srcReady.hang; 
-                }
-                // { 
-                //     lib.put(bundlename, bundle= bundle.add(meta)); 
-                //     this.prepareForPlay(defname, 1, true, i); // just increment index if check doesn't match
-                // }
-                ;         
+            case 
+            { check.last=="L"  } 
+            { 
+                lib.put(bundlename, bundle[0]= meta); 
+                this.prepareForPlay(defname, 1, bundlename, 0);
             }
+            { check.last=="R"  } 
+            { 
+                lib.put(bundlename, bundle[1]= meta); 
+                this.prepareForPlay(defname, 1, bundlename, 1);
+            }
+            { check.last=="Ls" } 
+            { 
+                lib.put(bundlename, bundle[2]= meta); 
+                this.prepareForPlay(defname, 1, bundlename, 2);
+            }
+            { check.last=="Rs" } 
+            { 
+                lib.put(bundlename, bundle[3]= meta); 
+                this.prepareForPlay(defname, 1, bundlename, 3);
+            }
+            { check.last=="C"  } 
+            { 
+                lib.put(bundlename, bundle[4]= meta); 
+                this.prepareForPlay(defname, 1, bundlename, 4);
+            }
+            { 
+                lib.put(bundlename, bundle[i]= meta); 
+                this.prepareForPlay(defname, 1, true, i); // just increment bus index if check fails 
+            }
+            ;         
         };
 
         case 
@@ -307,48 +298,43 @@ HTO {
                 } 
             })
         } 
-        // { filepath.isString } 
-        // { 
-        //     try{ 
-        //         PathName(filepath) 
-        //     } !? { 
-        //         metadata.(filepath.fullPath) 
-        //     }
-        // }
+        { filepath.isString } 
+        { 
+            try{ 
+                PathName(filepath) 
+            } !? { 
+                metadata.(filepath.fullPath) 
+            }
+        }
         { filepath=='internal' } 
         {
-
-        PathName("~/Documents/projects/github/HTO/Audio/") // resolve relative?
+            PathName("~/Documents/projects/github/HTO/Audio/") // resolve relative?
             .entries.do{|file|
                 if(file.isFolder, {
                     bundle= Array.newClear(numAudioChannels); 
                     file.entries.do{|f,i| 
                         check      = f.fileNameWithoutExtension;
-                        bundlename = file.folderName;
+                        bundlename = file.folderName.asSymbol;
                         ext        = f.extension;
                         case
                         { ext=="aif" or:{ext=="aiff"}} 
                         { 
                             makeBundle.(bundlename, bundle, metadata.(f), check, i);
-                            // "loop bundle".post; bundle.postln;
                         }
                         { ext=="wav" or:{ext=="wave"}} 
                         { 
                             makeBundle.(bundlename, bundle, metadata.(f), check, i) 
                         }
                         ;
-                        // srcReady.hang; // wait here for srcsynth to build
                     };
-                    // sendBundle.do{|bndl| bndl; srcReady.hang; }
                 }, { 
                     ext= file.extension;
                     case
                     { ext=="aif" or:{ext=="aiff"}} { metadata.(file) }
                     { ext=="wav" or:{ext=="wave"}} { metadata.(file) }
                     ;
-                    // srcReady.hang; // wait here for srcsynth to build
                 })
-            }
+            };
         }
         ;
     }
@@ -362,6 +348,7 @@ HTO {
             }, {
                 lib[bundle][i][4]= defname;
                 lib[bundle][i][5]= bundle; // show this sdef belongs to a bundle 
+                lib[bundle]= lib[bundle].select(_.notNil); // remove all nil meta arrays
             });
             SynthDef(defname, {|buf, gate=1, loop| 
                     var env= EnvGen.ar(Env([0,1,0], [0.02,0.02], \sine, 1), gate, doneAction:2);
@@ -369,7 +356,6 @@ HTO {
                     Out.ar(audiobus[i], src*env);
             }).add;
             server.sync;
-            srcReady.unhang; 
             inform("File" + name.asCompileString + "was successfully loaded."); 
         }
     }
@@ -377,7 +363,7 @@ HTO {
     play{|file, loop=1|
 
         var buf, startPos, cursor;
-        var bundle, defs;
+        var bundle;
         var update= 0.03;
 
         var path;
@@ -392,6 +378,7 @@ HTO {
             bundle= lib[file][0][5];
 
             cursor= {|sR, nF|
+                nF= nF + 1;
                 cursorMove= 
                 fork{
                     inf.do{|i| 
@@ -409,34 +396,32 @@ HTO {
                     numFrames   = lib[file][0][2];
                     sampleRate  = lib[file][0][3];
                     name        = lib[file][0][4];
-
                     startPos    = cursorPos ? 0;
-                    numFrames   = numFrames + 1;
 
                     buf= Buffer.cueSoundFile(server, path, startPos, numChannels); // bufferSize: 262144
                     server.sync;
                     curBuf= curBuf.add(buf);
+
                     srcsynth= srcsynth.add(Synth.newPaused(name, [\buf, buf, \loop, loop], src));
                     server.sync;
                     cursor.(sampleRate, numFrames);
                 }, {
-                    defs= lib[file].select{|x| x.notNil };
-                    defs.do{|meta|
-                        path     = meta[0];
-                        name     = meta[4];
+                    lib[file].do{|m|
+                        path     = m[0];
+                        name     = m[4];
                         startPos = cursorPos ? 0;
 
                         buf= Buffer.cueSoundFile(server, path, startPos, 1); 
                         server.sync;
                         curBuf= curBuf.add(buf);
+
                         srcsynth= srcsynth.add(Synth.newPaused(name, [\buf, buf, \loop, loop], src));
                         server.sync;
                     };
                     // use biggest value of sR/nF to make sure cursor doesn't loop to early 
-                    sampleRate  = defs.collect(_.at(3)).sort.last;
-                    numFrames   = defs.collect(_.at(2)).sort.last;
-                    numChannels = defs.size;
-                    numFrames   = numFrames + 1;
+                    sampleRate  = lib[file].collect(_.at(3)).sort.last;
+                    numFrames   = lib[file].collect(_.at(2)).sort.last;
+                    numChannels = lib[file].size;
                     cursor.(sampleRate, numFrames);
                 });
                 allXfer.do{|syn, i| 
@@ -444,24 +429,22 @@ HTO {
                     syn.set(\in, audiobus[in]);
                 };
                 srcsynth.do(_.run);
-                curFile= file;
-                isPlaying= true;
             };
+            curFile= file;
+            isPlaying= true;
         });
     }
 
     // in absence of gui.. 
     playFrom{|pos, file, loop|
         if(isPlaying.not, {
-            cursorPos= (pos*60)*lib[file][3];
+            cursorPos= (pos*60)*lib[file][0][3];
             this.play(file, loop);
         });
     }
 
     stop{
         if(isPlaying, { 
-            // srcsynth.set(\gate, 0); srcsynth= nil; 
-            // curBuf.close; curBuf.free; curBuf= nil;
             srcsynth.do(_.set(\gate, 0)); srcsynth= []; 
             curBuf.do(_.close.free); curBuf= [];
             cursorMove.stop; cursorMove= nil;
@@ -476,10 +459,10 @@ HTO {
 
     library{
         ^lib.collect(_.flat)
-            .collect(_.last)
-            .getPairs.collect{|x,i|
-                if(i.odd, { x.asTimeString }, { x })
-            }
+        .collect(_.last)
+        .getPairs.collect{|x,i|
+            if(i.odd, { x.asTimeString }, { x })
+        }
     }
 
     gui{
