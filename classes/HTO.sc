@@ -359,7 +359,6 @@ HTO {
             defname= defname.asSymbol;
             if(bundle.isNil, { 
                 lib[name][0][4]= defname;
-                lib[name][0][5]= bundle; 
             }, {
                 lib[bundle][i][4]= defname;
                 lib[bundle][i][5]= bundle; // show this sdef belongs to a bundle 
@@ -378,7 +377,7 @@ HTO {
     play{|file, loop=1|
 
         var buf, startPos, cursor;
-        var bundle;
+        var bundle, defs;
         var update= 0.03;
 
         var path;
@@ -421,9 +420,10 @@ HTO {
                     server.sync;
                     cursor.(sampleRate, numFrames);
                 }, {
-                    lib[file].select{|x| x.notNil }.do{|f|
-                        path     = f[0];
-                        name     = f[4];
+                    defs= lib[file].select{|x| x.notNil };
+                    defs.do{|meta|
+                        path     = meta[0];
+                        name     = meta[4];
                         startPos = cursorPos ? 0;
 
                         buf= Buffer.cueSoundFile(server, path, startPos, 1); 
@@ -433,9 +433,9 @@ HTO {
                         server.sync;
                     };
                     // use biggest value of sR/nF to make sure cursor doesn't loop to early 
-                    sampleRate  = lib[file].collect(_.at(3)).sort.last;
-                    numFrames   = lib[file].collect(_.at(2)).sort.last;
-                    numChannels = lib[file].size;
+                    sampleRate  = defs.collect(_.at(3)).sort.last;
+                    numFrames   = defs.collect(_.at(2)).sort.last;
+                    numChannels = defs.size;
                     numFrames   = numFrames + 1;
                     cursor.(sampleRate, numFrames);
                 });
