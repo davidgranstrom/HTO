@@ -246,10 +246,10 @@ HTO {
             meta= [ path.fullPath, numChannels, numFrames, sampleRate, nil, nil, duration ];
 
             if(numChannels>1, {
-                name= path.fileNameWithoutExtension.asSymbol;
-                defname= ("HTO_src_" ++ name).asSymbol;
+                name    = path.fileNameWithoutExtension.asSymbol;
+                defname = ("HTO_src_" ++ name).asSymbol;
+                meta[4] = defname;
                 lib.put(name, [ meta ]);
-                curFile= name;                                         
                 sendBundle= sendBundle.add({
                     this.prepareForPlay(defname, numChannels, 0)
                 });
@@ -266,42 +266,42 @@ HTO {
             case 
             { check.last=="L"  } 
             { 
-                lib.put(bundlename, bundle= bundle.add(meta)); 
+                lib.put(bundlename, bundle.add(meta));
                 sendBundle= sendBundle.add({ 
                     this.prepareForPlay(defname, 1, 0)
                 });
             }
             { check.last=="R"  } 
             { 
-                lib.put(bundlename, bundle= bundle.add(meta)); 
+                lib.put(bundlename, bundle.add(meta));
                 sendBundle= sendBundle.add({ 
                     this.prepareForPlay(defname, 1, 1)
                 });
             }
             { check.last=="Ls" } 
             { 
-                lib.put(bundlename, bundle= bundle.add(meta)); 
+                lib.put(bundlename, bundle.add(meta));
                 sendBundle= sendBundle.add({ 
                     this.prepareForPlay(defname, 1, 2)
                 });
             }
             { check.last=="Rs" } 
             { 
-                lib.put(bundlename, bundle= bundle.add(meta)); 
+                lib.put(bundlename, bundle.add(meta));
                 sendBundle= sendBundle.add({ 
                     this.prepareForPlay(defname, 1, 3)
                 });
             }
             { check.last=="C"  } 
             { 
-                lib.put(bundlename, bundle= bundle.add(meta)); 
+                lib.put(bundlename, bundle.add(meta));
                 sendBundle= sendBundle.add({ 
                     this.prepareForPlay(defname, 1, 4)
                 });
             }
             { 
-                lib.put(bundlename, bundle= bundle.add(meta)); 
-                this.prepareForPlay(defname, 1, i); // just increment index if check doesn't match
+                lib.put(bundlename, bundle.add(meta));
+                this.prepareForPlay(defname, 1, i); // increment bus index if check doesn't match
             }
             ;         
         };
@@ -328,7 +328,7 @@ HTO {
             PathName("~/Documents/projects/github/HTO/Audio/") // resolve relative?
             .entries.do{|file|
                 if(file.isFolder, {
-                    bundle= Array.new;
+                    bundle= List[];
                     file.entries.do{|f,i| 
                         check      = f.fileNameWithoutExtension;
                         bundlename = file.folderName.asSymbol;
@@ -354,8 +354,7 @@ HTO {
             };
         }
         ;
-        // create src synths
-        sendBundle.do(_.value);
+        sendBundle.do(_.value); // create src synths
     }
 
     prepareForPlay{|defname, numChannels, bus|
@@ -429,8 +428,8 @@ HTO {
                         server.sync;
                     };
                     // use biggest value of sR/nF to make sure cursor doesn't loop to early 
-                    sampleRate  = lib[file].collect(_.at(3)).sort.last;
-                    numFrames   = lib[file].collect(_.at(2)).sort.last;
+                    sampleRate  = lib[file].collect(_.at(3)).maxItem;
+                    numFrames   = lib[file].collect(_.at(2)).maxItem;
                     numChannels = lib[file].size;
                     cursor.(sampleRate, numFrames);
                 });
