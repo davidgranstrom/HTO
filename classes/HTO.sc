@@ -299,10 +299,10 @@ HTO {
                     this.prepareForPlay(defname, 1, 4)
                 });
             }
-            // { 
-            //     lib.put(bundlename, bundle= bundle.add(meta)); 
-            //     this.prepareForPlay(defname, 1, true, i); // just increment index if check doesn't match
-            // }
+            { 
+                lib.put(bundlename, bundle= bundle.add(meta)); 
+                this.prepareForPlay(defname, 1, i); // just increment index if check doesn't match
+            }
             ;         
         };
 
@@ -328,7 +328,6 @@ HTO {
             PathName("~/Documents/projects/github/HTO/Audio/") // resolve relative?
             .entries.do{|file|
                 if(file.isFolder, {
-                    // bundle= Array.newClear(numAudioChannels); 
                     bundle= Array.new;
                     file.entries.do{|f,i| 
                         check      = f.fileNameWithoutExtension;
@@ -361,15 +360,6 @@ HTO {
 
     prepareForPlay{|defname, numChannels, bus|
         fork{
-            // var defname= 'HTO_src_' ++ name;
-            // defname= defname.asSymbol;
-            // if(bundle.isNil, { 
-            //     lib[name][0][4]= defname;
-            // }, {
-            //     lib[bundle][i][4]= defname;
-            //     lib[bundle][i][5]= bundle; // show this sdef belongs to a bundle 
-            //     lib[bundle]= lib[bundle].select(_.notNil); // remove all nil meta arrays
-            // });
             SynthDef(defname, {|buf, gate=1, loop| 
                     var env= EnvGen.ar(Env([0,1,0], [0.02,0.02], \sine, 1), gate, doneAction:2);
                     var src= VDiskIn.ar(numChannels, buf, BufRateScale.kr(buf), loop: loop ); 
