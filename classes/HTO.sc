@@ -230,11 +230,11 @@ HTO {
 
     loadAudioFile{|filepath|
 
-        var ext, check;
+        var ext, check, thisPath;
         var bundlename, bundle;
         var sendBundle= Array.new;
 
-        var metadata= {|path|
+        var metadata= {|path, bundle=false|
             var meta, name, defname; 
             var sf          = SoundFile.openRead(path.fullPath);
             var numChannels = sf.numChannels;
@@ -245,7 +245,7 @@ HTO {
 
             meta= [ path.fullPath, numChannels, numFrames, sampleRate, nil, nil, duration ];
 
-            if(numChannels>1, {
+            if(bundle.not, {
                 name    = path.fileNameWithoutExtension.asSymbol;
                 defname = ("HTO_src_" ++ name).asSymbol;
                 meta[4] = defname;
@@ -306,61 +306,74 @@ HTO {
             ;         
         };
 
-        var checkForMultiple= {};
+        var checkForMultiple= {|path|
+            var pn= PathName(path);
+            if(pn.isFolder, {
+                pn.entries.do{|file|
+                    if(file.isFolder, {
+                        bundle= List[];
+                        file.entries.do{|f,i| 
+                            check      = f.fileNameWithoutExtension;
+                            bundlename = file.folderName.asSymbol;
+                            ext        = f.extension;
+                            case
+                            { ext=="aif" or:{ext=="aiff"}} 
+                            { 
+                                makeBundle.(bundlename, bundle, metadata.(f,true), check, i);
+                            }
+                            { ext=="wav" or:{ext=="wave"}} 
+                            { 
+                                makeBundle.(bundlename, bundle, metadata.(f,true), check, i) 
+                            }
+                            ;
+                        };
+                    }, { 
+                        ext= file.extension;
+                        case
+                        { ext=="aif" or:{ext=="aiff"}} { metadata.(file) }
+                        { ext=="wav" or:{ext=="wave"}} { metadata.(file) }
+                        ;
+                    });
+                }
+            }, {
+                ext= pn.extension;
+                case
+                { ext=="aif" or:{ext=="aiff"}} { metadata.(pn) }
+                { ext=="wav" or:{ext=="wave"}} { metadata.(pn) }
+                ;
+            });
+        };
 
         case 
         { filepath.isNil } 
         { 
             Dialog.openPanel({|path| 
                 path.do{|pth| 
-                    var p= PathName(pth);
-                    metadata.(p);
+                    checkForMultiple.(pth);
                 };
                 sendBundle.do(_.value);
             }, 
             multipleSelection: true
             );
         } 
-        { filepath.isString } 
+        { filepath.isArray } 
         { 
-            try{ 
-                PathName(filepath) 
-            } !? { 
-                metadata.(filepath.fullPath) 
-            }
+            if(filepath.isString, {
+                checkForMultiple.(filepath);
+            }, {
+                filepath.do{|f|
+                    checkForMultiple.(f);
+                };
+            });
+            sendBundle.do(_.value);
         }
         { filepath=='internal' } 
         {
-            PathName("~/Documents/projects/github/HTO/Audio/") // resolve relative?
-            .entries.do{|file|
-                if(file.isFolder, {
-                    bundle= List[];
-                    file.entries.do{|f,i| 
-                        check      = f.fileNameWithoutExtension;
-                        bundlename = file.folderName.asSymbol;
-                        ext        = f.extension;
-                        case
-                        { ext=="aif" or:{ext=="aiff"}} 
-                        { 
-                            makeBundle.(bundlename, bundle, metadata.(f), check, i);
-                        }
-                        { ext=="wav" or:{ext=="wave"}} 
-                        { 
-                            makeBundle.(bundlename, bundle, metadata.(f), check, i) 
-                        }
-                        ;
-                    };
-                }, { 
-                    ext= file.extension;
-                    case
-                    { ext=="aif" or:{ext=="aiff"}} { metadata.(file) }
-                    { ext=="wav" or:{ext=="wave"}} { metadata.(file) }
-                    ;
-                })
-            };
+            thisPath= PathName("".resolveRelative).parentPath +/+ "Audio";
+            checkForMultiple.(thisPath);
+            sendBundle.do(_.value);
         }
         ;
-        sendBundle.do(_.value); // create src synths
     }
 
     prepareForPlay{|defname, numChannels, bus|
