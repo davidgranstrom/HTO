@@ -457,9 +457,21 @@ HTO {
                     syn.set(\in, audiobus[in]);
                 };
                 srcsynth.do(_.run);
+                curFile= file;
+                isPlaying= true;
             };
-            curFile= file;
-            isPlaying= true;
+        });
+    }
+
+    currentFile{|file|
+        ^if(file.notNil, {
+            if(lib[file].notNil, {
+                curFile= file;
+            }, {
+                warn("File" + file + "was not found in the library");
+            });
+        }, {
+            curFile;
         });
     }
 
