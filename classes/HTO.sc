@@ -306,14 +306,20 @@ HTO {
             ;         
         };
 
+        var checkForMultiple= {};
+
         case 
         { filepath.isNil } 
         { 
-            Dialog.getPaths({|path| 
+            Dialog.openPanel({|path| 
                 path.do{|pth| 
-                    metadata.(pth) 
-                } 
-            })
+                    var p= PathName(pth);
+                    metadata.(p);
+                };
+                sendBundle.do(_.value);
+            }, 
+            multipleSelection: true
+            );
         } 
         { filepath.isString } 
         { 
