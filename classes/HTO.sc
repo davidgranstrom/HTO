@@ -402,7 +402,7 @@ HTO {
 
         if(isPlaying.not, {
 
-            file ?? { file= curFile ?? { "No audiofile(s) found!".throw } };
+            lib[file] ?? { file= curFile ?? { "No audiofile(s) found!".throw } };
             bundle= lib[file][0][5];
 
             cursor= {|sR, nF|
