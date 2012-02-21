@@ -1,14 +1,18 @@
 // HTO(speakers, mixerChannels, numAudioChannels)
 (
+s.latency= 0.05;
 s.waitForBoot{
     // create a 2 speaker instance of HTO with 8 mixer channels 
     // last fader is reserved for the master fader
     h= HTO(2, 9); 
     s.sync;
-    h.loadAudioFile("sounds/a11wlk01.wav"); 
+    0.5.wait;
+    h.loadAudioFile('internal'); // put audio files into ./HTO/Audio
 }
 )
 
+h.library;
+h.currentFile('FILENAME');
 h.play; 
 s.queryAllNodes;
 
@@ -21,6 +25,7 @@ h.master.set(\amp, 1);
 h.stop; 
 
 h.loadAudioFile; // load another file (opens dialog)
+h.play('foo')    // check the library for filename
 h.play;          // the most recently loaded file is cued for playback
 h.stop; 
 
@@ -92,10 +97,12 @@ ch[num].lpf.set(\cfreq, \loVal, \hiVal);
 master.set(\amp, \mute);
 
 // INSTANCE METHODS
-loadAudioFile(); // "/path/to/file" or nil. default: nil
+loadAudioFile(); // "/path/to/file", 'internal' or nil. default: nil
 library          // show added audio files
-play();          // 'library Name' or 'nil' which plays the latest added file. default: nil
+currentFile      // show which file is cued for play
+play();          // 'library name' or 'nil'. plays the last added file. default: nil
 playFrom();      // play from another position in the buffer. playFrom(pos, file, loop)
+reset;           // stops playback and resets play head
 stop;
 free;
 
